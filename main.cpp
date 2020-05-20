@@ -12,8 +12,6 @@ extern "C"{
     #include "libavutil/audio_fifo.h"
 }
 
-
-
 int main(){
 
     FILE *fp_open = NULL;
@@ -56,5 +54,7 @@ int main(){
     
     ins_transfer(7);
     
+	fwrite(tmpOutBuffer.data(), 1, inputLength, fp_open);
+
     return 0;
 }

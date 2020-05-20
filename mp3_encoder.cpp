@@ -1,71 +1,177 @@
+#include "mp3_encoder.h"
+
 namespace yymobile
 {
 
-    mp3_encoder::mp3_encoder(int sampleFrequency, int channels, int bps, int bitrate):
-        m_sampleFrequency(sampleFrequency), m_channels(channels), m_bps(bps), m_bitrate(bitrate), m_quality(quality), 
-        m_lastQuality(quality), m_pSilkEnc(NULL), m_useDTX(0), m_complexity(0), m_EncCount(0),
-        m_resampler(NULL), m_resampled_data(NULL), m_resample_data_size(0),mResamplerForSilk("silkcoder Adapter"){
-        m_inputFrameSize = sampleFrequency* FRAME_LENGTH_MS  / 1000 * bps/8;
+    mp3_encoder::mp3_encoder() : codec(NULL), codecCtx(NULL), frame(NULL), pkt(NULL)
+    {
+        
     }
 
-    mp3_encoder::~mp3_encoder(){
+    mp3_encoder::~mp3_encoder()
+    {
         Stop();
     }
 
-    int mp3_encoder::Start(){
-        // if(m_bps != 16 )
-        // 	return -1;
-
-        // int encSizeBytes;
-        // int ret = SKP_Silk_SDK_Get_Encoder_Size( &encSizeBytes );
-        // if( ret ) {
-        // 	return -1;
-        //  }
-
-        // m_pSilkEnc = malloc( encSizeBytes );
-
-        // ret = SKP_Silk_SDK_InitEncoder( m_pSilkEnc, &m_encControl );
-        // if( ret ) {
-        // 	return -1;
-        // }
-
-        //#ifdef YYMOBILE_ANDROID
-        // int coreCount = android_getCpuCount();
-        // if( coreCount >= 4 )
-        // {
-        //     m_complexity=1;
-        // 	LOGD("### silk encoder, use complexity : %d, core count :%d", m_complexity, coreCount);
-        // }
-        //#endif
-
-        /* Set Encoder parameters */
-        // m_encControl.API_sampleRate       = m_sampleFrequency;
-        // m_encControl.maxInternalSampleRate  = 24000;
-        // m_encControl.packetSize           = m_sampleFrequency * FRAME_LENGTH_MS/1000;
-        // m_encControl.packetLossPercentage = 0;
-        // m_encControl.useInBandFEC         = 0;
-        // m_encControl.useDTX               = m_useDTX;
-        // m_encControl.complexity           = m_complexity;
-        // m_encControl.bitRate              = silkbps[m_quality];
-
-        /*
-        if(m_sampleFrequency != yymobile::kDefaultSampleRate)
+    int mp3_encoder::Start(int insampleRate, int inchannel, AVSampleFormat insampleformat,int bps,int profile,int outsample,int outchannel,AVSampleFormat outsampleformat)
+    {
+        int bufferPos, ret;
+        /* find the MP3 encoder */
+        codec = avcodec_find_encoder(AV_CODEC_ID_MP3);
+        if (!codec)
         {
-            LOGD("### silk encoder, need resample: %d -> %d", yymobile::kDefaultSampleRate, m_sampleFrequency);
-            m_resampler = new webrtc::Resampler(yymobile::kDefaultSampleRate, m_sampleFrequency, webrtc::kResamplerSynchronous);
-            m_resample_data_size = m_inputFrameSize * 2;
-            m_resampled_data = (char*) malloc(m_resample_data_size);
-
-            LOGD("### silk encoder: input_frame(%d), output_frame(%d), resample_frame(%d)",
-                    m_inputFrameSize, (yymobile::kMaxEncodedBytesPerPacket + 2), m_resample_data_size);
+            printf("mp3_encoder avcodec_find_encoder fail");
+            Stop();
+            return -1;
         }
-        */
-        
-        // if(m_sampleFrequency != yymobile::kSampleRate44K1)
-        // {
-        //     m_resample_data_size = m_inputFrameSize * 2;
-        //     m_resampled_data = (char*) malloc(m_resample_data_size);
-        // }
-        // return (yymobile::kMaxEncodedBytesPerPacket + 2);
+
+        codecCtx = avcodec_alloc_context3(codec);
+        if (!codecCtx)
+        {
+            printf("mp3_encoder avcodec_alloc_context3 fail");
+            Stop();
+            return -1;
+        }
+
+        if (outchannel != 1 && outchannel != 2)
+        {
+            printf("mp3_encoder not support %d channel",outchannel);
+            Stop();
+            return -1;
+        }
+
+        /* put sample parameters */
+        codecCtx->bit_rate = bps;
+        codecCtx->sample_fmt = outsampleformat;
+        codecCtx->sample_rate = outsample;
+        codecCtx->channel_layout = (outchannel == 2) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
+        codecCtx->channels = av_get_channel_layout_nb_channels(codecCtx->channel_layout);
+
+        /* open it */
+        if (avcodec_open2(codecCtx, codec, NULL) < 0)
+        {
+            printf("mp3_encoder avcodec_open2 fail");
+            Stop();
+            return -1;
+        }
+
+        /* packet for holding encoded output */
+        pkt = av_packet_alloc();
+        if (!pkt)
+        {
+            printf("mp3_encoder av_packet_alloc fail");
+            Stop();
+            return -1;
+        }
+
+        /* frame containing input raw audio */
+        frame = av_frame_alloc();
+        if (!frame)
+        {
+            printf("mp3_encoder av_frame_alloc fail");
+            Stop();
+            return -1;
+        }
+
+        frame->nb_samples = codecCtx->frame_size;//maybe need resample if samplerate is not equal
+        frame->format = insampleformat;
+        frame->channel_layout = (inchannel == 2) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
+        frame->channels = inchannel;
+
+        /* allocate the data buffers */
+        ret = av_frame_get_buffer(frame, 0);
+        if (ret < 0)
+        {
+            printf("mp3_encoder av_frame_get_buffer fail");
+            Stop();
+            return -1;
+        }
+
+
     }
-}
+
+    void mp3_encoder::Stop()
+    {
+        if (frame)
+        {
+            av_frame_free(&frame);
+            frame = NULL;
+        }
+        if (pkt)
+        {
+            av_packet_free(&pkt);
+            pkt = NULL;
+        }
+        if (codecCtx)
+        {
+            avcodec_close(codecCtx);
+            avcodec_free_context(&codecCtx);
+            codecCtx = NULL;
+        }
+    }
+
+    void mp3_encoder::encode_oneframe(AVCodecContext* codecCtx, AVFrame* frame, AVPacket* pkt,unsigned char *outData, int &curOutLen, int totalBufferSize)
+    {
+        int ret = 0;
+
+        ret = avcodec_send_frame(codecCtx, frame);
+        if (ret < 0)
+        {
+            return ;
+        }
+
+        while (ret >= 0)
+        {
+            ret = avcodec_receive_packet(codecCtx, pkt);
+            if (ret < 0)
+            {
+                return ;
+            }
+            curOutLen += pkt->size;
+            if (curOutLen > totalBufferSize)
+            {
+                printf("[MP3 ENC] Failed to calculate data size\n");
+                return ;
+            }
+            memcpy(outData + curOutLen - pkt->size, pkt->data, pkt->size);
+            av_packet_unref(pkt);
+        }
+
+        return ;
+    }
+
+    int mp3_encoder::Encode(const unsigned char* inputData, unsigned int len, unsigned char* outputData,int outBufferSize)
+    {
+        int outLen = 0;
+        int bufferPos = 0;
+        int ret=0;
+        int frameBytesSize = codecCtx->frame_size * frame->channels * av_get_bytes_per_sample((AVSampleFormat)frame->format);
+        while (1)
+        {
+            if (bufferPos + frameBytesSize > len)
+            {
+                break;
+            }
+
+            /* make sure the frame is writable -- makes a copy if the encoder kept a reference internally */
+            ret = av_frame_make_writable(frame);
+            if (ret < 0)
+            {
+                break;
+            }
+
+            memcpy(frame->data[0], inputData + bufferPos, frameBytesSize);
+
+            bufferPos += frameBytesSize;
+
+            encode_oneframe(codecCtx, frame, pkt,outputData, outLen, outBufferSize);
+        }
+
+        /* flush the encoder */
+        encode_oneframe(codecCtx, NULL, pkt, outputData, outLen, outBufferSize);
+
+        Stop();
+        return outLen;
+    }
+
+} // namespace yymobile

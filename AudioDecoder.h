@@ -1,12 +1,13 @@
-//#ifndef AUDIODE_DECODER_H
+#ifndef AUDIODE_DECODER_H
 #define AUDIODE_DECODER_H
 
 
-#include "yyaudio.h"
-#include "audio_filter.h"
-#include "rawfilewriter.h"
-#include "speex/speex_resampler.h"
-#include "SpeexResampler.h"
+// #include "yyaudio.h"
+// #include "audio_filter.h"
+// #include "rawfilewriter.h"
+// #include "speex/speex_resampler.h"
+// #include "SpeexResampler.h"
+#include<iostream>
 
 namespace yymobile
 {
@@ -29,7 +30,7 @@ public:
 	int  decode(const unsigned char *inputData, unsigned int length, unsigned char* outputData);
 	int  recover(int framenum, unsigned char* outputData);
 	void Reset();
-	void SetVolumeLevel(int level) { m_volAdjust.SetLevel(level);}
+	//void SetVolumeLevel(int level) { m_volAdjust.SetLevel(level);}
 	int getOutputSampleRate() { return mOutSampleRate; }
 	void setOutputSampleRate(int sr) { mOutSampleRate = sr; }
 	int getOutputChannels() { return mOutChannel; }
@@ -42,19 +43,19 @@ private:
     
     static const int kMaxFrameSizeInByte = 8192 * 2;
     
-	AudioDecoder *m_decoder;
-	CAdjustVol m_volAdjust;
-	CFileWriter m_fileWriter;
+	//AudioDecoder *m_decoder;
+	//CAdjustVol m_volAdjust;
+	//CFileWriter m_fileWriter;
     
 	int mOutSampleRate;
 	int mOutChannel;
-	SpeexResamplerState* mpResampler;
+	//SpeexResamplerState* mpResampler;
 	int mLastResamplerChannels;
-    AAC_HWCODEC_MGR_CALLBACK mAacHwCodecMgrCallback;
+   // AAC_HWCODEC_MGR_CALLBACK mAacHwCodecMgrCallback;
     bool mIsUseHwCodec;
-	CSpeexResampler * mStereoReampler;
+	//CSpeexResampler * mStereoReampler;
 };
 
 }
 
-//#endif
+#endif
